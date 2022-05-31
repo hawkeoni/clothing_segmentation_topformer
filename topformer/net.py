@@ -683,12 +683,20 @@ class SimpleHead(BaseDecodeHead):
             outs += pred
         return outs
 
+    def cls_seg(self, feat):
+        """Classify each pixel."""
+        if self.dropout is not None:
+            feat = self.dropout(feat)
+        output = self.conv_seg(feat)
+        return output
+
+
     def forward(self, inputs):
         xx = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
         x = self.agg_res(xx)
         _c = self.linear_fuse(x)
         x = self.cls_seg(_c)
-        return 
+        return x
 
 
 class TopformerSegmenter(nn.Module):
