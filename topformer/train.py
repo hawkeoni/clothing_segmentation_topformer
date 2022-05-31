@@ -4,6 +4,31 @@ import torch
 from mmcv.utils import Config
 from net import Topformer, SimpleHead, TopformerSegmenter
 
+class PolyLrUpdaterHook(LrUpdaterHook):
+
+    def __init__(self,
+                 power: float = 1.,
+                 min_lr: float = 0.,
+                 **kwargs) -> None:
+        self.power = power
+        self.min_lr = min_lr
+        super().__init__(**kwargs)
+
+    def get_lr(self, runner: 'runner.BaseRunner', base_lr: float):
+        if self.by_epoch:
+            progress = runner.epoch
+            max_progress = runner.max_epochs
+        else:
+            progress = runner.iter
+            max_progress = runner.max_iters
+        coeff = (1 - progress / max_progress)**self.power
+        return (base_lr - self.min_lr) * coeff + self.min_lr
+
+
+def make_optimizer(model):
+    optimizer = AdamW
+
+    return optimizer, scheduler
 
 
 def main(args):
@@ -35,8 +60,24 @@ def main(args):
     )
     import torch.optim as optim
     model = TopformerSegmenter(backbone, head).to(device)
-    opt = optim.Adam(model.parameters())
-    x = torch.rand(8, 3, 512, 512).to(device)
+    optimizer = optim.AdamW(
+        {}
+    )
+    # opt = optim.AdamW({model.backbone.p}, lr=0.0003, betas=(0.9, 0.999), weight_decay=0.01,
+                    
+    )
+    optimizer = dict(_delete_=True, type='AdamW', lr=0.0003, betas=(0.9, 0.999), weight_decay=0.01,
+                    paramwise_cfg=dict(custom_keys={'pos_block': dict(decay_mult=0.),
+                                                    'norm': dict(decay_mult=0.),
+                                                    'head': dict(lr_mult=10.)
+                                                    }))
+
+    lr_config = dict(_delete_=True, policy='poly',
+                 warmup='linear',
+                 warmup_iters=1500,
+                 warmup_ratio=1e-6,
+                 power=1.0, min_lr=0.0, by_epoch=False)
+    x = torch.rand(8, 3, 768, 768).to(device)
     print(model(x).shape)
     input()
 
