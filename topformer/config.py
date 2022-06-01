@@ -16,8 +16,8 @@ cfgs_md2 = dict(
     ],
     embed_out_indice=[2, 4, 6, 9],
     channels=[32, 64, 128, 160],
-    decode_out_indices=[1, 2, 3],
-    out_channels=[None, 128, 128, 128],
+    decode_out_indices=[0, 1, 2, 3],
+    out_channels=[128, 128, 128, 128],
     num_heads=8,
     c2t_stride=2,
 )
@@ -42,8 +42,8 @@ model = dict(
     ),
     decode_head=dict(
         type='SimpleHead',
-        in_channels=[128, 128, 128],
-        in_index=[0, 1, 2],
+        in_channels=[128, 128, 128, 128],
+        in_index=[0, 1, 2, 3],
         channels=128,
         dropout_ratio=0.1,
         num_classes=4,

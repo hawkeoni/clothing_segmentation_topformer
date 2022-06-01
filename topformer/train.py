@@ -1,37 +1,19 @@
 from argparse import ArgumentParser
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, RandomSampler
 from mmcv.utils import Config
+
+from scheduler import get_optimizer_and_scheduler
 from net import Topformer, SimpleHead, TopformerSegmenter
+from data import AlignedDataset
 
-class PolyLrUpdaterHook(LrUpdaterHook):
-
-    def __init__(self,
-                 power: float = 1.,
-                 min_lr: float = 0.,
-                 **kwargs) -> None:
-        self.power = power
-        self.min_lr = min_lr
-        super().__init__(**kwargs)
-
-    def get_lr(self, runner: 'runner.BaseRunner', base_lr: float):
-        if self.by_epoch:
-            progress = runner.epoch
-            max_progress = runner.max_epochs
-        else:
-            progress = runner.iter
-            max_progress = runner.max_iters
-        coeff = (1 - progress / max_progress)**self.power
-        return (base_lr - self.min_lr) * coeff + self.min_lr
-
-
-def make_optimizer(model):
-    optimizer = AdamW
-
-    return optimizer, scheduler
 
 
 def main(args):
+    MAX_ITERS = args.max_iters
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     print("Using device", device)
     cfg = Config.fromfile("topformer/config.py")
@@ -58,33 +40,52 @@ def main(args):
         in_index=h_cfg.in_index,
         dropout_ratio=h_cfg.dropout_ratio,
     )
-    import torch.optim as optim
     model = TopformerSegmenter(backbone, head).to(device)
-    optimizer = optim.AdamW(
-        {}
+    optimizer, scheduler = get_optimizer_and_scheduler(
+        model, lr=0.0003, weight_decay=0.01,
+        warmup_iters=1500,
+        warmup_ratio=1e-6,
+        power=1,
+        min_lr=0,
+        max_iters=MAX_ITERS
     )
-    # opt = optim.AdamW({model.backbone.p}, lr=0.0003, betas=(0.9, 0.999), weight_decay=0.01,
-                    
-    )
-    optimizer = dict(_delete_=True, type='AdamW', lr=0.0003, betas=(0.9, 0.999), weight_decay=0.01,
-                    paramwise_cfg=dict(custom_keys={'pos_block': dict(decay_mult=0.),
-                                                    'norm': dict(decay_mult=0.),
-                                                    'head': dict(lr_mult=10.)
-                                                    }))
+    dataset = AlignedDataset()
+    dataset.initialize(args)
+    dataloader = DataLoader(
+        dataset, 
+        batch_size=args.batch_size,
+        sampler=RandomSampler(dataset),
+        pin_memory=True)
 
-    lr_config = dict(_delete_=True, policy='poly',
-                 warmup='linear',
-                 warmup_iters=1500,
-                 warmup_ratio=1e-6,
-                 power=1.0, min_lr=0.0, by_epoch=False)
-    x = torch.rand(8, 3, 768, 768).to(device)
-    print(model(x).shape)
-    input()
+    criterion = nn.CrossEntropyLoss()
+    
+    print("Start training")
+    for iteration, (image, label) in enumerate(dataloader):
+        optimizer.zero_grad()
+        image = image.to(device)
+        label = label.to(device)
+        prediction = model(image)
+        print(image.shape, label.shape)
+        print(prediction.shape)
+        prediction = F.upsample(prediction, (args.fine_width, args.fine_height), mode="bilinear") 
+        loss = criterion(prediction, label)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+        print(iteration, loss)
 
 
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--max-iters", type=int, default=10_000)
+    parser.add_argument("--image-folder", type=str)
+    parser.add_argument("--df-path", type=str)
+    parser.add_argument("--fine-width", type=int, default=768)
+    parser.add_argument("--fine-height", type=int, default=768)
+    parser.add_argument("--mean", type=float, default=0.5)
+    parser.add_argument("--std", type=float, default=0.5)
     args = parser.parse_args()
     main(args)
