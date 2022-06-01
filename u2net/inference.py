@@ -19,7 +19,7 @@ def main(args):
     palette = get_palette(4)
     img_transform = transforms.Compose([transforms.ToTensor(), Normalize_image(0.5, 0.5)])
     print("Loading weights")
-    model = U2NET(3, 4).eval().to(device).half()
+    model = U2NET(3, 4).eval().to(device)
     load_checkpoint_mgpu(model, args.load_path)
     print("Finish loading weights")
 

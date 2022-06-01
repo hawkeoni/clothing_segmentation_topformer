@@ -1,21 +1,40 @@
+import os
+from time import time
 from argparse import ArgumentParser
+from pathlib import Path
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, RandomSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.tensorboard import SummaryWriter
 from mmcv.utils import Config
 
 from scheduler import get_optimizer_and_scheduler
 from net import Topformer, SimpleHead, TopformerSegmenter
 from data import AlignedDataset
+from saveload import save_ckpt
 
+
+def get_batch(loader):
+    while True:
+        for batch in loader:
+            yield batch
+
+
+def setup():
+    world_size = int(os.environ["WORLD_SIZE"])
+    rank = int(os.environ["LOCAL_RANK"])
+    dist.init_process_group(
+        backend="nccl", 
+        world_size=world_size, 
+        rank=rank)
 
 
 def main(args):
     MAX_ITERS = args.max_iters
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    print("Using device", device)
     cfg = Config.fromfile("topformer/config.py")
     b_cfg = cfg.model.backbone
     backbone = Topformer(
@@ -40,7 +59,10 @@ def main(args):
         in_index=h_cfg.in_index,
         dropout_ratio=h_cfg.dropout_ratio,
     )
-    model = TopformerSegmenter(backbone, head).to(device)
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    model = TopformerSegmenter(backbone, head).to(rank)
+    model = DDP(model, device_ids=[rank])
     optimizer, scheduler = get_optimizer_and_scheduler(
         model, lr=0.0003, weight_decay=0.01,
         warmup_iters=1500,
@@ -54,38 +76,62 @@ def main(args):
     dataloader = DataLoader(
         dataset, 
         batch_size=args.batch_size,
-        sampler=RandomSampler(dataset),
-        pin_memory=True)
+        sampler=DistributedSampler(dataset, rank=rank, drop_last=True),
+        pin_memory=True
+    )
 
     criterion = nn.CrossEntropyLoss()
     
-    print("Start training")
-    for iteration, (image, label) in enumerate(dataloader):
-        optimizer.zero_grad()
-        image = image.to(device)
-        label = label.to(device)
+    start_time = time()
+    if rank == 0:
+        print("Start training")
+        writer = SummaryWriter()
+    optimizer.zero_grad()
+    for iteration, (image, label) in enumerate(get_batch(dataloader), start=1):
+        image = image.to(rank)
+        label = label.to(rank)
         prediction = model(image)
-        print(image.shape, label.shape)
-        print(prediction.shape)
         prediction = F.upsample(prediction, (args.fine_width, args.fine_height), mode="bilinear") 
         loss = criterion(prediction, label)
         loss.backward()
         optimizer.step()
         scheduler.step()
-        print(iteration, loss)
+        loss_val = loss.item()
+        optimizer.zero_grad()
+        if rank == 0:
+            mean_loss = dist.all_reduce(loss, dist.ReduceOp.SUM).item() / world_size
+            writer.add_scalar("loss", mean_loss, iteration)
+            writer.add_scalar("lr", scheduler.get_lr()[0], iteration)
+
+        if iteration % args.log_interval == 0 and rank == 0:
+            now = time()
+            etime = (now - start_time) / 60
+            print(f"Iteration: {iteration}, Loss: {loss_val}, Elapsed Time: {etime}")
+        
+        if iteration % args.checkpoint_interval and rank == 0:
+            save_folder = Path("checkpoints")
+            save_folder.mkdir(exist_ok=True)
+            name = f"model_{iteration}.pth"
+            save_ckpt(cfg, model, optimizer, scheduler, save_folder / name)
 
 
 
 
+# 3 min - 10 iterations; 1 iter = 8 samples; 80 samples; 4 gpu - 320 samples
+# 320 / 3 = 100 samples/ min
+# 45000 / 100 = 450 min / epoch = 8 hrs
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--max-iters", type=int, default=10_000)
+    parser.add_argument("--max-iters", type=int, default=160_000)
     parser.add_argument("--image-folder", type=str)
     parser.add_argument("--df-path", type=str)
+    parser.add_argument("--checkpoint-interval", type=int, default=500)
+    parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--fine-width", type=int, default=768)
     parser.add_argument("--fine-height", type=int, default=768)
     parser.add_argument("--mean", type=float, default=0.5)
     parser.add_argument("--std", type=float, default=0.5)
     args = parser.parse_args()
+    setup()
     main(args)
