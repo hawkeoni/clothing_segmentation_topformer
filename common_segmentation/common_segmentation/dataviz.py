@@ -20,3 +20,4 @@ def get_palette(num_cls):
             i += 1
             lab >>= 3
     return palette
+

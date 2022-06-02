@@ -17,6 +17,7 @@ from scheduler import get_optimizer_and_scheduler
 from net import Topformer, SimpleHead, TopformerSegmenter
 from data import AlignedDataset
 from saveload import save_ckpt
+from common_segmentation import calculate_iou
 
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -42,6 +43,8 @@ def setup():
 
 
 def main(args):
+    if dist.get_rank() == 0:
+        print(args)
     MAX_ITERS = args.max_iters
     cfg = Config.fromfile("topformer/config.py")
     b_cfg = cfg.model.backbone
@@ -54,7 +57,6 @@ def main(args):
         depths=b_cfg.depths,
         c2t_stride=b_cfg.c2t_stride,
         drop_path_rate=b_cfg.drop_path_rate,
-        # norm_cfg=b_cfg.norm_cfg,
         init_cfg=b_cfg.init_cfg,
         num_heads=b_cfg.num_heads,
         )
@@ -73,7 +75,7 @@ def main(args):
     model = DDP(model, device_ids=[rank])
     optimizer, scheduler = get_optimizer_and_scheduler(
         model, lr=args.lr, weight_decay=0.01,
-        warmup_iters=1500,
+        warmup_iters=args.warmup_iters,
         warmup_ratio=1e-6,
         power=1,
         min_lr=0,
@@ -90,6 +92,7 @@ def main(args):
         pin_memory=True,
         num_workers=4,
     )
+    classes = ["background", "upper", "lower", "whole"]
 
     criterion = nn.CrossEntropyLoss()
     
@@ -100,13 +103,12 @@ def main(args):
         import random
         writer = SummaryWriter(flush_secs=10, filename_suffix="".join(random.choices(ascii_lowercase, k=10)))
     optimizer.zero_grad()
-    # image, label = next(get_batch(dataloader))
-    # if rank == 0:
-    #     import numpy as np
-    #     np.save("image.np", image.cpu().numpy())
-    #     np.save("label.np", label.cpu().numpy())
-    # for iteration in range(100):
-    for iteration, (image, label) in enumerate(get_batch(dataloader), start=1):
+    image, label = next(get_batch(dataloader))
+    if rank == 0:
+        import numpy as np
+        np.save("image.np", image.cpu().numpy())
+        np.save("label.np", label.cpu().numpy())
+    for iteration in range(1000):
         image = image.to(rank)
         label = label.to(rank)
         prediction = model(image)
@@ -120,6 +122,8 @@ def main(args):
         if rank == 0:
             writer.add_scalar("loss", loss_val, iteration)
             writer.add_scalar("lr", scheduler.get_lr()[0], iteration)
+            ious = calculate_iou(prediction, label)
+            writer.add_scalars("iou", {k: v for k, v in zip(classes, ious)}, iteration)
 
         if iteration % args.log_interval == 0 and rank == 0:
             now = time()
@@ -133,6 +137,12 @@ def main(args):
             savepath = save_folder / name
             print(f"Saving model on iteration {iteration} to {savepath}")
             save_ckpt(cfg, model, optimizer, scheduler, savepath)
+        
+        if iteration > MAX_ITERS:
+            save_folder = Path("checkpoints")
+            save_folder.mkdir(exist_ok=True)
+            save_ckpt(cfg, model, optimizer, scheduler, save_folder / f"model_{iteration}.pth")
+            break
 
 
 if __name__ == "__main__":
@@ -143,12 +153,12 @@ if __name__ == "__main__":
     parser.add_argument("--df-path", type=str)
     parser.add_argument("--checkpoint-interval", type=int, default=500)
     parser.add_argument("--log-interval", type=int, default=10)
+    parser.add_argument("--warmup-iters", type=int, default=1500)
     parser.add_argument("--fine-width", type=int, default=768)
     parser.add_argument("--fine-height", type=int, default=768)
     parser.add_argument("--mean", type=float, default=0.5)
     parser.add_argument("--std", type=float, default=0.5)
     parser.add_argument("--lr", type=float, default=0.0003)
     args = parser.parse_args()
-    print(args)
     setup()
     main(args)

@@ -30,7 +30,7 @@ def main(args):
         image = Image.open(image_path).convert("RGB")
         original_size = image.size
         image = image.resize((768, 768), Image.BICUBIC)
-        x = img_transform(image).unsqueeze(0).to(device).half()
+        x = img_transform(image).unsqueeze(0).to(device)
         with torch.no_grad():
             start = time()
             output = model(x)[0]

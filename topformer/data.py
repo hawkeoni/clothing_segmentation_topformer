@@ -2,6 +2,7 @@ import os
 import collections
 from tqdm import tqdm
 
+import cv2
 import pandas as pd
 import numpy as np
 from PIL import Image

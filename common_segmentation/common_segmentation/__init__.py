@@ -1,3 +1,2 @@
-from common_segmentation.metrics import calculate_iou, calculate_multiclass_iou
-from common_segmentation.dataset import AlignedDataset
+from common_segmentation.metrics import calculate_iou
 from common_segmentation.dataviz import get_palette
