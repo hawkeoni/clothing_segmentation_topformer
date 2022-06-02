@@ -1,4 +1,5 @@
 import os
+import warnings
 from time import time
 from argparse import ArgumentParser
 from pathlib import Path
@@ -18,6 +19,11 @@ from data import AlignedDataset
 from saveload import save_ckpt
 
 
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
 def get_batch(loader):
     while True:
         for batch in loader:
@@ -31,6 +37,8 @@ def setup():
         backend="nccl", 
         world_size=world_size, 
         rank=rank)
+    if rank == 0:
+        print("Finish setup")
 
 
 def main(args):
@@ -64,20 +72,23 @@ def main(args):
     model = TopformerSegmenter(backbone, head).to(rank)
     model = DDP(model, device_ids=[rank])
     optimizer, scheduler = get_optimizer_and_scheduler(
-        model, lr=0.0003, weight_decay=0.01,
+        model, lr=args.lr, weight_decay=0.01,
         warmup_iters=1500,
         warmup_ratio=1e-6,
         power=1,
         min_lr=0,
         max_iters=MAX_ITERS
     )
+    if rank == 0:
+        print("Finish model creation")
     dataset = AlignedDataset()
     dataset.initialize(args)
     dataloader = DataLoader(
         dataset, 
         batch_size=args.batch_size,
         sampler=DistributedSampler(dataset, rank=rank, drop_last=True),
-        pin_memory=True
+        pin_memory=True,
+        num_workers=4,
     )
 
     criterion = nn.CrossEntropyLoss()
@@ -85,8 +96,16 @@ def main(args):
     start_time = time()
     if rank == 0:
         print("Start training")
-        writer = SummaryWriter()
+        from string import ascii_lowercase
+        import random
+        writer = SummaryWriter(flush_secs=10, filename_suffix="".join(random.choices(ascii_lowercase, k=10)))
     optimizer.zero_grad()
+    # image, label = next(get_batch(dataloader))
+    # if rank == 0:
+    #     import numpy as np
+    #     np.save("image.np", image.cpu().numpy())
+    #     np.save("label.np", label.cpu().numpy())
+    # for iteration in range(100):
     for iteration, (image, label) in enumerate(get_batch(dataloader), start=1):
         image = image.to(rank)
         label = label.to(rank)
@@ -99,8 +118,7 @@ def main(args):
         loss_val = loss.item()
         optimizer.zero_grad()
         if rank == 0:
-            mean_loss = dist.all_reduce(loss, dist.ReduceOp.SUM).item() / world_size
-            writer.add_scalar("loss", mean_loss, iteration)
+            writer.add_scalar("loss", loss_val, iteration)
             writer.add_scalar("lr", scheduler.get_lr()[0], iteration)
 
         if iteration % args.log_interval == 0 and rank == 0:
@@ -108,18 +126,15 @@ def main(args):
             etime = (now - start_time) / 60
             print(f"Iteration: {iteration}, Loss: {loss_val}, Elapsed Time: {etime}")
         
-        if iteration % args.checkpoint_interval and rank == 0:
+        if iteration % args.checkpoint_interval == 0 and rank == 0:
             save_folder = Path("checkpoints")
             save_folder.mkdir(exist_ok=True)
             name = f"model_{iteration}.pth"
-            save_ckpt(cfg, model, optimizer, scheduler, save_folder / name)
+            savepath = save_folder / name
+            print(f"Saving model on iteration {iteration} to {savepath}")
+            save_ckpt(cfg, model, optimizer, scheduler, savepath)
 
 
-
-
-# 3 min - 10 iterations; 1 iter = 8 samples; 80 samples; 4 gpu - 320 samples
-# 320 / 3 = 100 samples/ min
-# 45000 / 100 = 450 min / epoch = 8 hrs
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--batch-size", type=int, default=8)
@@ -132,6 +147,8 @@ if __name__ == "__main__":
     parser.add_argument("--fine-height", type=int, default=768)
     parser.add_argument("--mean", type=float, default=0.5)
     parser.add_argument("--std", type=float, default=0.5)
+    parser.add_argument("--lr", type=float, default=0.0003)
     args = parser.parse_args()
+    print(args)
     setup()
     main(args)

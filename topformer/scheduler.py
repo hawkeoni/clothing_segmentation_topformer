@@ -53,19 +53,5 @@ def get_optimizer_and_scheduler(model, lr, weight_decay, warmup_iters, warmup_ra
         ],
         lr=lr, weight_decay=weight_decay
     )
-    # for name, p in model.backbone.named_parameters():
-    #     if "bn.bias" in name or "bn.weight" in name:
-    #         no_decay.append(p)
-    #     else:
-    #         decay.append(p)
-        
-    # optimizer = AdamW(
-    #     [
-    #         {"params": decay},
-    #         {"params": no_decay, "weight_decay": 0},
-    #         {"params": model.segmentation_head.parameters(), "lr": lr * 10}
-    #     ],
-    #     lr=lr, weight_decay=weight_decay
-    # )
     scheduler = PolyScheduler(optimizer, warmup_iters, warmup_ratio, power, min_lr, max_iters)
     return optimizer, scheduler

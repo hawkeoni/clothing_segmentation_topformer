@@ -32,12 +32,24 @@ dist.init_process_group(
     world_size=world_size, 
     rank=rank)
 
-model = DDP(DummyModel().to(rank), device_ids=[rank])
-dataset = MyDataset()
-loader = tdata.DataLoader(dataset, batch_size=5, 
-sampler=tdata.DistributedSampler(dataset, rank=dist.get_rank()))
+c = nn.CrossEntropyLoss()
+p = torch.rand(2, 5).to(rank)
+t = torch.randint(0, 5, (2, )).to(rank)
+loss = c(p, t)
+print("I am", dist.get_rank(), loss)
+handle = dist.all_reduce(loss, op=dist.ReduceOp.SUM, async_op=True)
+handle.wait()
+if dist.get_rank() == 0:
+    print(loss)
 
-for i, sample in enumerate(loader):
-    print(i)
-    with torch.no_grad():
-        model(sample)
+
+# mean_loss = dist.all_reduce(loss, dist.ReduceOp.SUM).item() / world_size
+# model = DDP(DummyModel().to(rank), device_ids=[rank])
+# dataset = MyDataset()
+# loader = tdata.DataLoader(dataset, batch_size=5, 
+# sampler=tdata.DistributedSampler(dataset, rank=dist.get_rank()))
+
+# for i, sample in enumerate(loader):
+#     print(i)
+#     with torch.no_grad():
+#         model(sample)

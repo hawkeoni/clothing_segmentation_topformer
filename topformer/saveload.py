@@ -38,6 +38,8 @@ def load_model(path, device=torch.device("cuda")):
         in_index=h_cfg.in_index,
         dropout_ratio=h_cfg.dropout_ratio,
     )
-    model = TopformerSegmenter(backbone, head).to(device).eval()
-    model.load_state_dict(ckpt["model"])
-    return model
+    model = TopformerSegmenter(backbone, head)
+    model_state_dict = ckpt["model"]
+    fixed_state_dict = {k[len("module."):]: v for k, v in model_state_dict.items()}
+    model.load_state_dict(fixed_state_dict)
+    return model.to(device).eval()
