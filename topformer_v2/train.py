@@ -4,7 +4,6 @@ from time import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-from PIL import Image
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -96,7 +95,6 @@ def main(args):
         print("Finish model creation")
     train_dataset = IMaterialistDataset("../images", "train_85.csv")
     val_dataset = IMaterialistDataset("../images", "val_15.csv")
-    train_dataset.initialize(args)
     train_dataloader = DataLoader(
         train_dataset, 
         batch_size=args.batch_size,
@@ -149,9 +147,9 @@ def main(args):
         
         if iteration % args.checkpoint_interval == 0 and rank == 0:
             model = model.eval()
-            evaluate_model(model, val_dataloader, writer, args.val_iters, iteration)
+            evaluate_model(model, validation_generator, writer, args.val_iters, iteration)
             model = model.train()
-            save_folder = Path("checkpoints_dice")
+            save_folder = Path("checkpoint_aug_dice")
             save_folder.mkdir(exist_ok=True)
             name = f"model_{iteration}.pth"
             savepath = save_folder / name
@@ -159,7 +157,7 @@ def main(args):
             save_ckpt(cfg, model, optimizer, scheduler, savepath)
         
         if iteration > MAX_ITERS:
-            save_folder = Path("checkpoints_dice")
+            save_folder = Path("checkpoint_aug_dice")
             save_folder.mkdir(exist_ok=True)
             save_ckpt(cfg, model, optimizer, scheduler, save_folder / f"model_{iteration}.pth")
             break
@@ -167,9 +165,11 @@ def main(args):
 
 @torch.no_grad()
 def evaluate_model(model, val_dataloader, writer, val_iters, cur_step):
+    rank = dist.get_rank()
+    if rank == 0:
+        print("Start evaluation")
     ce_criterion = nn.CrossEntropyLoss(weight=torch.Tensor([1., 1.5, 1.5, 1.5]).to(rank))
     dice_criterion = smp.losses.DiceLoss("multiclass")
-    rank = dist.get_rank()
     ious = []
     losses = []
     for iter, (image, label) in enumerate(val_dataloader):

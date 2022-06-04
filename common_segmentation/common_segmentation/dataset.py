@@ -62,18 +62,15 @@ def transform_mask(orig_mask):
 
 class ClothingCoParsing(Dataset):
 
-    def __init__(self, dataset_dir: str, augs = None):
+    def __init__(self, dataset_dir: str, augs):
         self.dir = Path(dataset_dir)
         self.image_dir = self.dir / "jpeg_images/IMAGES"
         self.masks_dir = self.dir / "jpeg_masks/MASKS"
         self.image_paths = list(self.image_dir.glob("*"))
-        if augs is None:
-            augs = transforms.Compose([transforms.ToTensor(), Normalize_image(0.5, 0.5)])
         self.augs = augs
     
     def __len__(self):
         return len(self.image_paths)
-    
 
     def __getitem__(self, index):
         image_path = self.image_paths[index]
@@ -86,8 +83,13 @@ class ClothingCoParsing(Dataset):
         mask = cv2.imread(str(mask_path), 0)
         mask = cv2.resize(mask, (768, 768), interpolation=cv2.INTER_NEAREST)
         mask = transform_mask(mask)
-        img = self.augs(img)
         mask = torch.from_numpy(mask)
+        if isinstance(self.augs, transforms.Compose):
+            img = self.augs(img)
+        elif isinstance(self.augs, alb.Compose):
+            img = self.augs(image=img)["image"]
+        else:
+            raise ValueError(f"Unknown transforms type {type(self.augs)}")
         return img, mask
 
 
@@ -177,8 +179,9 @@ class IMaterialistDataset(Dataset):
         final_mask = mask.sum(axis=0) # H, W
         conflict = (final_mask > 3) 
         final_mask[conflict] = 1
+        final_mask = final_mask.astype(np.uint8)
         aug = self.augs(image=img, mask=final_mask)
-        return aug["image"], aug["mask"]
+        return aug["image"], aug["mask"].long()
 
 
     def __len__(self):

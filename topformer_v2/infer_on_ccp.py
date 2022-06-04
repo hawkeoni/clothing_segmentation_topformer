@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
+import albumentations as alb
+from albumentations.pytorch.transforms import ToTensorV2
 
 from saveload import load_model
 from data import Normalize_image
@@ -22,7 +24,13 @@ def main(args):
     print("Loading weights")
     model = load_model(args.load_path)
     print("Finish loading weights")
-    dataset = ClothingCoParsing(args.input_dir)
+    dataset = ClothingCoParsing(args.input_dir,
+    augs = alb.Compose([
+            alb.Resize(768, 768), 
+            alb.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2()
+            ])
+    )
     ious = []
     from tqdm import tqdm
     for i in tqdm(range(len(dataset))):
@@ -31,9 +39,7 @@ def main(args):
         mask = mask.unsqueeze(0).cuda()
         original_size = image.shape[2:]
         with torch.no_grad():
-            start = time()
             output = model(image)
-            end = time()
             # output - batch, classes, h, w
             output = F.upsample(output, original_size, mode="bilinear") 
         ious.append(calculate_iou(output, mask))

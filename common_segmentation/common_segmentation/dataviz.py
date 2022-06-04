@@ -1,3 +1,7 @@
+import cv2
+import numpy as np
+
+
 def get_palette(num_cls):
     """Returns the color map for visualizing the segmentation mask.
     Args:
@@ -20,4 +24,16 @@ def get_palette(num_cls):
             i += 1
             lab >>= 3
     return palette
+
+
+def make_colored_mask(mask):
+    colored_mask = np.zeros(list(mask.shape) + [3], dtype=np.uint8)
+    colored_mask[mask == 1] = [128, 0, 0]
+    colored_mask[mask == 2] = [0, 128, 0]
+    colored_mask[mask == 3] = [0, 0, 128]
+    return colored_mask
+
+
+def add_mask(image: np.ndarray, mask: np.ndarray):
+    return cv2.addWeighted(image, 1, mask, 0.8, 0)
 
