@@ -8,8 +8,10 @@ from scheduler import get_optimizer_and_scheduler
 def save_ckpt(config, model, optimizer, scheduler, path):
     m = model.state_dict()
     o = optimizer.state_dict()
-    s = scheduler.state_dict()
-    state = {"config": config, "model": m, "optimizer": o, "scheduler": s}
+    state = {"config": config, "model": m, "optimizer": o}
+    if scheduler is not None:
+        state["scheduler"] = scheduler.state_dict()
+
     torch.save(state, open(path, "wb"))
 
 

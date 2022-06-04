@@ -28,9 +28,9 @@ def get_palette(num_cls):
 
 def make_colored_mask(mask):
     colored_mask = np.zeros(list(mask.shape) + [3], dtype=np.uint8)
-    colored_mask[mask == 1] = [128, 0, 0]
-    colored_mask[mask == 2] = [0, 128, 0]
-    colored_mask[mask == 3] = [0, 0, 128]
+    colored_mask[mask == 1] = [200, 0, 0]
+    colored_mask[mask == 2] = [0, 200, 0]
+    colored_mask[mask == 3] = [0, 0, 200]
     return colored_mask
 
 

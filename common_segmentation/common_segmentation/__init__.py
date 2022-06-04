@@ -1,3 +1,3 @@
 from common_segmentation.metrics import calculate_iou
-from common_segmentation.dataviz import get_palette
+from common_segmentation.dataviz import get_palette, make_colored_mask, add_mask
 from common_segmentation.dataset import ClothingCoParsing, IMaterialistDataset

@@ -31,7 +31,7 @@ class PolyScheduler(_LRScheduler):
 
 
 
-def get_optimizer_and_scheduler(model, lr, weight_decay, warmup_iters, warmup_ratio, power, min_lr, max_iters):
+def get_optimizer_and_scheduler(model, lr, weight_decay, warmup_iters, warmup_ratio, power, min_lr, max_iters, use_scheduler = True):
     # optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     no_decay = []
     decay = []
@@ -53,5 +53,8 @@ def get_optimizer_and_scheduler(model, lr, weight_decay, warmup_iters, warmup_ra
         ],
         lr=lr, weight_decay=weight_decay
     )
-    scheduler = PolyScheduler(optimizer, warmup_iters, warmup_ratio, power, min_lr, max_iters)
+    if use_scheduler:
+        scheduler = PolyScheduler(optimizer, warmup_iters, warmup_ratio, power, min_lr, max_iters)
+    else:
+        scheduler = None
     return optimizer, scheduler

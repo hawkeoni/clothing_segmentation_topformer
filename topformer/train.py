@@ -4,7 +4,6 @@ from time import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-from PIL import Image
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -16,9 +15,10 @@ from mmcv.utils import Config
 
 from scheduler import get_optimizer_and_scheduler
 from net import Topformer, SimpleHead, TopformerSegmenter
-from data import AlignedDataset
 from saveload import save_ckpt
-from common_segmentation import calculate_iou, get_palette
+from common_segmentation import calculate_iou, get_palette, IMaterialistDataset
+import segmentation_models_pytorch as smp
+import numpy as np
 
 PALETTE = get_palette(4)
 
@@ -93,18 +93,28 @@ def main(args):
     )
     if rank == 0:
         print("Finish model creation")
-    dataset = AlignedDataset()
-    dataset.initialize(args)
-    dataloader = DataLoader(
-        dataset, 
+    train_dataset = IMaterialistDataset("../images", "train_85.csv")
+    val_dataset = IMaterialistDataset("../images", "val_15.csv")
+    train_dataloader = DataLoader(
+        train_dataset, 
         batch_size=args.batch_size,
-        sampler=DistributedSampler(dataset, rank=rank, drop_last=True),
+        sampler=DistributedSampler(train_dataset, rank=rank, drop_last=True),
         pin_memory=True,
-        num_workers=4,
+        num_workers=8,
     )
+    val_dataloader = DataLoader(
+        val_dataset, 
+        batch_size=args.batch_size,
+        sampler=DistributedSampler(val_dataset, rank=rank, drop_last=True),
+        pin_memory=True,
+        num_workers=8,
+    )
+    validation_generator = get_batch(val_dataloader)
+    
     classes = ["background", "upper", "lower", "whole"]
 
-    criterion = nn.CrossEntropyLoss(weight=torch.Tensor([1., 1.5, 1.5, 1.5]).to(rank))
+    ce_criterion = nn.CrossEntropyLoss(weight=torch.Tensor([1., 1.5, 1.5, 1.5]).to(rank))
+    dice_criterion = smp.losses.DiceLoss("multiclass")
     
     start_time = time()
     if rank == 0:
@@ -113,28 +123,22 @@ def main(args):
         import random
         writer = SummaryWriter(flush_secs=10, filename_suffix="".join(random.choices(ascii_lowercase, k=10)))
     optimizer.zero_grad()
-    # image, label = next(get_batch(dataloader))
-    # if rank == 0:
-    #     import numpy as np
-    #     np.save("image.np", image.cpu().numpy())
-    #     np.save("label.np", label.cpu().numpy())
-    # for iteration in range(1000):
-    for iteration, (image, label) in enumerate(get_batch(dataloader), start=1):
+    for iteration, (image, label) in enumerate(get_batch(train_dataloader), start=1):
         image = image.to(rank)
         label = label.to(rank)
         prediction = model(image)
         prediction = F.upsample(prediction, (args.fine_width, args.fine_height), mode="bilinear") 
-        loss = criterion(prediction, label)
+        loss = ce_criterion(prediction, label) * 0.8 + 0.2 * dice_criterion(prediction, label)
         loss.backward()
         optimizer.step()
         scheduler.step()
         loss_val = loss.item()
         optimizer.zero_grad()
         if rank == 0:
-            writer.add_scalar("loss", loss_val, iteration)
+            writer.add_scalar("loss/train", loss_val, iteration)
             writer.add_scalar("lr", scheduler.get_lr()[0], iteration)
             ious = calculate_iou(prediction, label)
-            writer.add_scalars("iou", {k: v for k, v in zip(classes, ious)}, iteration)
+            writer.add_scalars("iou/train", {k: v for k, v in zip(classes, ious)}, iteration)
 
         if iteration % args.log_interval == 0 and rank == 0:
             now = time()
@@ -142,7 +146,10 @@ def main(args):
             print(f"Iteration: {iteration}, Loss: {loss_val}, Elapsed Time: {etime}")
         
         if iteration % args.checkpoint_interval == 0 and rank == 0:
-            save_folder = Path("checkpoints")
+            model = model.eval()
+            evaluate_model(model, validation_generator, writer, args.val_iters, iteration)
+            model = model.train()
+            save_folder = Path("checkpoint_aug_dice")
             save_folder.mkdir(exist_ok=True)
             name = f"model_{iteration}.pth"
             savepath = save_folder / name
@@ -150,10 +157,39 @@ def main(args):
             save_ckpt(cfg, model, optimizer, scheduler, savepath)
         
         if iteration > MAX_ITERS:
-            save_folder = Path("checkpoints")
+            save_folder = Path("checkpoint_aug_dice")
             save_folder.mkdir(exist_ok=True)
             save_ckpt(cfg, model, optimizer, scheduler, save_folder / f"model_{iteration}.pth")
             break
+
+
+@torch.no_grad()
+def evaluate_model(model, val_dataloader, writer, val_iters, cur_step):
+    rank = dist.get_rank()
+    if rank == 0:
+        print("Start evaluation")
+    ce_criterion = nn.CrossEntropyLoss(weight=torch.Tensor([1., 1.5, 1.5, 1.5]).to(rank))
+    dice_criterion = smp.losses.DiceLoss("multiclass")
+    ious = []
+    losses = []
+    for iter, (image, label) in enumerate(val_dataloader):
+        if iter >= val_iters:
+            break
+        image = image.to(rank)
+        label = label.to(rank)
+        prediction = model(image)
+        prediction = F.upsample(prediction, (args.fine_width, args.fine_height), mode="bilinear") 
+        loss = ce_criterion(prediction, label) * 0.8 + 0.2 * dice_criterion(prediction, label)
+        loss = loss.item()
+        iou = calculate_iou(prediction, label)
+        ious.append(iou)
+        losses.append(loss)
+    if rank == 0:
+        ious = np.mean(ious, axis=0)
+        writer.add_scalar("loss/val", np.mean(losses), cur_step)
+        classes = ["background", "upper", "lower", "whole"]
+        writer.add_scalars("iou/val", {k: v for k, v in zip(classes, ious)}, cur_step)
+    
 
 
 if __name__ == "__main__":
@@ -172,6 +208,8 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=0.0003)
     parser.add_argument("--config", type=str, default="topformer/config.py")
     parser.add_argument("--init-from", type=str, default=None)
+    parser.add_argument("--val-iters", type=int, default=50)
     args = parser.parse_args()
+    print("WE ARE WITH DICELOSS")
     setup()
     main(args)
