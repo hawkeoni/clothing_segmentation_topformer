@@ -1,5 +1,5 @@
 # TopFormer Cloth Segmentation
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]()
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1dKLZ0qxVFUffAR6lMknvMbVbpBMi0kqU?usp=sharing)
 
 # Part 1
 ## Project structure
@@ -8,13 +8,12 @@ The project has 2 folders sevaral folders:
 * topformer - TopFormer code for training and inference.
 * common_segmentation - folder which contains code for both previous folders. It's a small package which I install with `pip install -e`.
 
-Generally I would use [pytorch-lightning](https://github.com/PyTorchLightning/pytorch-lightning) to make it a single codebase and use [segmentation_models_pytorch](https://github.com/qubvel/segmentation_models.pytorch) to base my code upon, but due to the time limits I decided to split the experiments into several folders.  I would also use a more advanced and comfortable experiment tracking service, such as WanDB or Neptune.
+Generally I would use [pytorch-lightning](https://github.com/PyTorchLightning/pytorch-lightning) to make it a single codebase and use [segmentation_models_pytorch](https://github.com/qubvel/segmentation_models.pytorch) to base my code upon (configuring experiments with [Hydra](https://github.com/facebookresearch/hydra)), but due to the time limits I decided to split the experiments into several folders.  I would also use a more advanced and comfortable experiment tracking service, such as WanDB or Neptune instead of tensorboard.
 
-I just felt like doing it in a very quck way, as this was not intended to be a large codebase.
-
+I just felt like doing it in a very quck hacky way, as this was not intended to be a large codebase.
 
 ## Data
-As the U2NET model my TopFormer is also trained on the [IMaterialist Dataset](https://www.kaggle.com/c/imaterialist-fashion-2019-FGVC6/data). The comparison is a flawed: I'm using 15% of the dataset as validation and later test my best weights on the [People Clothing Dataset][https://www.kaggle.com/datasets/rajkumarl/people-clothing-segmentation]. As far as I can understand the U2NET model was trained on the whole IMaterialist Dataset for 100k steps. I did not know any magic numbers so I relied on a validation set.
+As the U2NET model my TopFormer is also trained on the [IMaterialist Dataset](https://www.kaggle.com/c/imaterialist-fashion-2019-FGVC6/data). The comparison is a flawed: I'm using 15% of the dataset as validation and later test my best weights on the [People Clothing Dataset][https://www.kaggle.com/datasets/rajkumarl/people-clothing-segmentation]. As far as I can understand the U2NET model was trained on the whole IMaterialist Dataset for 100k steps. I did not know any magic numbers so I had to rely on a validation set.
 
 I also train TopFormer on 768x768 rescaled images for better comparison with U2NET.
 
@@ -33,8 +32,8 @@ I've made several experiments:
 | TopFormer CE + Dice + Heavy Augs | 41.2  | **47.3**  | 21.7       |
 
 TopFormer CE was made with config topformer/config.py
-Other models were trained with topformer/conf_20.py and initialized from the weights
-from [original repo](https://github.com/hustvl/TopFormer) with the model TopFormer-B_512x512_4x8_160k.
+Other models were trained with topformer/conf_20.py and initialized from the weights 
+from [original repo](https://github.com/hustvl/TopFormer) with the model TopFormer-B_512x512_4x8_160k (trained on ade20k).
 The weighs can be accessed on [Google Drive](https://drive.google.com/drive/folders/16j22QitHAiX4Sf2Ap9eSZAtnFezl5ROb?usp=sharing).
 
 I also tried finetuning the model with Lovasz loss after training it with CrossEntropy and Dice losses but it did not improve the results. This would probably be beneficial, but I did not have enough time to run enough experiments for a solid conclusion.
@@ -62,7 +61,11 @@ python topformer/infer_on_ccp.py --input-dir ../arch/ --load-path checkpoint/mod
 ```
 Use `--torch-transforms` for models TopFormer CE, TopFormer CE + Dice.
 
-Inference can also be tested in [Google Colab](pass)
+Inference can also be tested in [Google Colab](https://colab.research.google.com/drive/1dKLZ0qxVFUffAR6lMknvMbVbpBMi0kqU?usp=sharing)
+
+## Quality comparison
+I gathered a few images for demonstrational purposes. Images can be accessed on [Google Drive](https://drive.google.com/drive/folders/16j22QitHAiX4Sf2Ap9eSZAtnFezl5ROb?usp=sharing)
+Comparison of TopFormer and U2NET can be seen in a [nearby folder](https://drive.google.com/drive/folders/1WfJ4jKg55R-9Wy9e7u569eMHwLsOBDoT?usp=sharing).
 
 
 # Part 2
