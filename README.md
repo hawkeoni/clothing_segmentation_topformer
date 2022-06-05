@@ -23,7 +23,7 @@ As a side note: I believe there may be inconsistent/bad markup for the train and
 ## Experiments
 Results on People Clothing Dataset.
 
-I've made several experiments:
+I've made several experiments (metric is mIOU over all images):
 | MODEL                            | Upper | Lower | Whole body |
 |----------------------------------|-------|-------|------------|
 | U2NET                            | **41.8**  | 37.7  | 28.5       |
