@@ -13,7 +13,7 @@ Generally I would use [pytorch-lightning](https://github.com/PyTorchLightning/py
 I just felt like doing it in a very quck hacky way, as this was not intended to be a large codebase.
 
 ## Data
-As the U2NET model my TopFormer is also trained on the [IMaterialist Dataset](https://www.kaggle.com/c/imaterialist-fashion-2019-FGVC6/data). The comparison is a flawed: I'm using 15% of the dataset as validation and later test my best weights on the [People Clothing Dataset][https://www.kaggle.com/datasets/rajkumarl/people-clothing-segmentation]. As far as I can understand the U2NET model was trained on the whole IMaterialist Dataset for 100k steps. I did not know any magic numbers so I had to rely on a validation set.
+As the U2NET model my TopFormer is also trained on the [IMaterialist Dataset](https://www.kaggle.com/c/imaterialist-fashion-2019-FGVC6/data). The comparison is a flawed: I'm using 15% of the dataset as validation and later test my best weights on the [People Clothing Dataset](https://www.kaggle.com/datasets/rajkumarl/people-clothing-segmentation). As far as I can understand the U2NET model was trained on the whole IMaterialist Dataset for 100k steps. I did not know any magic numbers so I had to rely on a validation set.
 
 I also train TopFormer on 768x768 rescaled images for better comparison with U2NET.
 
@@ -39,23 +39,29 @@ The weighs can be accessed on [Google Drive](https://drive.google.com/drive/fold
 I also tried finetuning the model with Lovasz loss after training it with CrossEntropy and Dice losses but it did not improve the results. This would probably be beneficial, but I did not have enough time to run enough experiments for a solid conclusion.
 
 **Memory**:
+
 * U2NET model has 40M parameters, which results in a weight (FP32) of 160Mb.
 * TopFormer model has 5M parameters, which results in a weight (FP32) of 20Mb.
 
 N.B. The TopFormer checkpoint also contains state dicts of the optimizer and scheduler, which make it 58Mb.
 
-**Time**
+**Time**:
+
 On the People Clothing Dataset on Tesla V100 32GB to process 1000 images (batchsize 1):
 * U2Net takes 0.045s per image
 * TopFormer takes 0.022s per image
 
 ## Inference scripts
 `--input-dir` is the path to unarchived People Clothing Dataset
+
 **U2NET**
+
 ```bash
 python u2net/infer_on_ccp.py --input-dir ../arch --load-path cloth_segm_u2net_latest.pth
 ```
+
 **TopFormer**
+
 ```
 python topformer/infer_on_ccp.py --input-dir ../arch/ --load-path checkpoint/model.pt [--torch-transforms]
 ```
@@ -64,7 +70,8 @@ Use `--torch-transforms` for models TopFormer CE, TopFormer CE + Dice.
 Inference can also be tested in [Google Colab](https://colab.research.google.com/drive/1dKLZ0qxVFUffAR6lMknvMbVbpBMi0kqU?usp=sharing)
 
 ## Quality comparison
-I gathered a few images for demonstrational purposes. Images can be accessed on [Google Drive](https://drive.google.com/drive/folders/16j22QitHAiX4Sf2Ap9eSZAtnFezl5ROb?usp=sharing)
+I gathered a few images for demonstrational purposes. Images can be accessed on [Google Drive](https://drive.google.com/drive/folders/16j22QitHAiX4Sf2Ap9eSZAtnFezl5ROb?usp=sharing).
+
 Comparison of TopFormer and U2NET can be seen in a [nearby folder](https://drive.google.com/drive/folders/1WfJ4jKg55R-9Wy9e7u569eMHwLsOBDoT?usp=sharing).
 
 
