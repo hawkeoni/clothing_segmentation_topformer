@@ -51,7 +51,7 @@ def main(args):
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     MAX_ITERS = args.max_iters
-    model = load_model(args.init_from)
+    model, cfg = load_model(args.init_from, device=torch.device(f"cuda:{rank}"), return_cfg=True)
     model = DDP(model, device_ids=[rank])
     optimizer, _ = get_optimizer_and_scheduler(
         model, lr=args.lr, weight_decay=0.01,
@@ -105,7 +105,7 @@ def main(args):
         optimizer.zero_grad()
         if rank == 0:
             writer.add_scalar("loss/train", loss_val, iteration)
-            writer.add_scalar("lr", optimizer.get_lr()[0], iteration)
+            writer.add_scalar("lr", optimizer.param_groups[0]["lr"], iteration)
             ious = calculate_iou(prediction, label)
             writer.add_scalars("iou/train", {k: v for k, v in zip(classes, ious)}, iteration)
 
@@ -169,13 +169,10 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-iters", type=int, default=1500)
     parser.add_argument("--fine-width", type=int, default=768)
     parser.add_argument("--fine-height", type=int, default=768)
-    parser.add_argument("--mean", type=float, default=0.5)
-    parser.add_argument("--std", type=float, default=0.5)
     parser.add_argument("--lr", type=float, default=0.0003)
     parser.add_argument("--config", type=str, default="topformer/config.py")
     parser.add_argument("--init-from", type=str, required=True)
     parser.add_argument("--val-iters", type=int, default=50)
     args = parser.parse_args()
-    print("WE ARE WITH DICELOSS")
     setup()
     main(args)

@@ -143,10 +143,10 @@ class IMaterialistDataset(Dataset):
         self.augs = alb.Compose([
             alb.Resize(768, 768), 
             alb.HorizontalFlip(),
-            alb.ShiftScaleRotate(p=0.1),
-            alb.ColorJitter(p=0.1),
-            alb.RandomBrightnessContrast(p=0.1),
-            alb.RGBShift(p=0.1),
+            alb.ShiftScaleRotate(p=0.3),
+            alb.ColorJitter(p=0.3),
+            alb.RandomBrightnessContrast(p=0.3),
+            alb.RGBShift(p=0.3),
             alb.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2()
             ])

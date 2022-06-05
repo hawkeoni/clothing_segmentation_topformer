@@ -15,7 +15,7 @@ def save_ckpt(config, model, optimizer, scheduler, path):
     torch.save(state, open(path, "wb"))
 
 
-def load_model(path, device=torch.device("cuda")):
+def load_model(path, device=torch.device("cuda"), return_cfg=False):
     ckpt = torch.load(path)
     cfg = ckpt["config"]
     b_cfg = cfg.model.backbone
@@ -44,4 +44,7 @@ def load_model(path, device=torch.device("cuda")):
     model_state_dict = ckpt["model"]
     fixed_state_dict = {k[len("module."):]: v for k, v in model_state_dict.items()}
     model.load_state_dict(fixed_state_dict)
-    return model.to(device).eval()
+    model = model.to(device).eval()
+    if return_cfg:
+        return model, cfg
+    return model

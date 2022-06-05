@@ -87,7 +87,7 @@ def main(args):
         model, lr=args.lr, weight_decay=0.01,
         warmup_iters=args.warmup_iters,
         warmup_ratio=1e-6,
-        power=1,
+        power=2,
         min_lr=0,
         max_iters=MAX_ITERS
     )
@@ -121,7 +121,7 @@ def main(args):
         print("Start training")
         from string import ascii_lowercase
         import random
-        writer = SummaryWriter(flush_secs=10, filename_suffix="".join(random.choices(ascii_lowercase, k=10)))
+        writer = SummaryWriter(log_dir="aggressive", flush_secs=10, filename_suffix="".join(random.choices(ascii_lowercase, k=10)))
     optimizer.zero_grad()
     for iteration, (image, label) in enumerate(get_batch(train_dataloader), start=1):
         image = image.to(rank)
@@ -149,7 +149,7 @@ def main(args):
             model = model.eval()
             evaluate_model(model, validation_generator, writer, args.val_iters, iteration)
             model = model.train()
-            save_folder = Path("checkpoint_aug_dice")
+            save_folder = Path("checkpoint_aggressive")
             save_folder.mkdir(exist_ok=True)
             name = f"model_{iteration}.pth"
             savepath = save_folder / name
@@ -157,7 +157,7 @@ def main(args):
             save_ckpt(cfg, model, optimizer, scheduler, savepath)
         
         if iteration > MAX_ITERS:
-            save_folder = Path("checkpoint_aug_dice")
+            save_folder = Path("checkpoint_aggressive")
             save_folder.mkdir(exist_ok=True)
             save_ckpt(cfg, model, optimizer, scheduler, save_folder / f"model_{iteration}.pth")
             break

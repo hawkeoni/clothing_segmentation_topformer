@@ -20,22 +20,29 @@ def main(args):
     palette = get_palette(4)
     print("Loading weights")
     model = U2NET(3, 4).eval().to(device)
+    number_of_parameters = sum([p.numel() for p in model.parameters()])
+    print(f"Number of parameters: {number_of_parameters}")
     load_checkpoint_mgpu(model, args.load_path)
     print("Finish loading weights")
     img_transform = transforms.Compose([transforms.ToTensor(), Normalize_image(0.5, 0.5)])
     dataset = ClothingCoParsing(args.input_dir, augs=img_transform)
     ious = []
+    times = []
     from tqdm import tqdm
     for i in tqdm(range(len(dataset))):
         img, mask = dataset[i]
         image = img.unsqueeze(0).cuda()
         mask = mask.unsqueeze(0).cuda()
         original_size = image.shape[2:]
+        start = time()
         with torch.no_grad():
             output = model(image)[0]
+        end = time()
+        times.append(end - start)
         ious.append(calculate_iou(output, mask))
     ious = np.array(ious)
     print(np.mean(ious, axis=0))
+    print("Mean time", np.mean(times))
 
 
 
