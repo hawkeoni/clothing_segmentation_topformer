@@ -27,7 +27,7 @@ def main(args):
     print(f"Number of parameters: {number_of_parameters}")
     print("Finish loading weights")
     if args.torch_transforms:
-        augs = transforms.Compose([transforms.ToTensor(), Normalize_image(0.5, 0.5)]), 
+        augs = transforms.Compose([transforms.ToTensor(), Normalize_image(0.5, 0.5)])
     else:
         augs = alb.Compose([
             alb.Resize(768, 768), 

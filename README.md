@@ -1,5 +1,5 @@
 # TopFormer Cloth Segmentation
-
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]()
 
 # Part 1
 ## Project structure
@@ -35,6 +35,7 @@ I've made several experiments:
 TopFormer CE was made with config topformer/config.py
 Other models were trained with topformer/conf_20.py and initialized from the weights
 from [original repo](https://github.com/hustvl/TopFormer) with the model TopFormer-B_512x512_4x8_160k.
+The weighs can be accessed on [Google Drive](https://drive.google.com/drive/folders/16j22QitHAiX4Sf2Ap9eSZAtnFezl5ROb?usp=sharing).
 
 I also tried finetuning the model with Lovasz loss after training it with CrossEntropy and Dice losses but it did not improve the results. This would probably be beneficial, but I did not have enough time to run enough experiments for a solid conclusion.
 
@@ -84,5 +85,6 @@ Question:
 6. Using tracing to compile model to a static graph https://pytorch.org/docs/stable/generated/torch.jit.trace.html.  
 7. Writing specialized low-level code to preallocate memory buffers (to fight memory fragmentation and for faster transfers) and use pinned memory.
 8. Pruning model weights (again at the cost of quality) https://jacobgil.github.io/deeplearning/pruning-deep-learning, https://ai.googleblog.com/2021/03/accelerating-neural-networks-on-mobile.html
+9. Neural network can be distilled into a smaller network with distillation (KL over labels) https://arxiv.org/pdf/1503.02531.pdf. This may result in a smaller network with a comparable quality, but then again: it does not guarantee great results and multiple experiments are required.
 
 Most of the techniques are implemented in frameworks for mobile inference such as [TNN](https://github.com/Tencent/TNN) and [ncnn](https://github.com/Tencent/ncnn).
